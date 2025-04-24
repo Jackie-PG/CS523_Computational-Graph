@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Computational Graph</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .error { color: red; }
+    .result { margin-top: 20px; } 
+
+    /* Thêm khung cho formula */
+    .formula {
+      border: 3px solid #d27a0e;
+      background-color:rgba(244, 241, 84, 0.98);
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 6px;
+    } 
+
+     /* Style cho khung ghi chú */
+    .note {
+      background-color: #d1e5f4;   
+      border-left: 5px solid hwb(0 0% 15%);  
+      padding: 10px 15px;
+      margin-bottom: 15px;
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+  </style>
+  <!-- Thêm MathJax để render LaTeX -->
+  <script>
+    window.onload = function() {
+      MathJax.typesetPromise();
+    };
+  </script>
+  
+  
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+</head>
+<body>
+  <h1>Đồ thị tính toán</h1>
+  
+  {% if error %}
+  <div class="error">
+    <strong>Lỗi:</strong> {{ error }}
+  </div>
+  {% endif %}
+  
+  <!--Nhập biểu thức và phân tích ra biến -->
+  <form method="POST"> 
+    <!--Hộp ghi chú-->
+    {% if not show_result and not show_variables %}
+    <div class="note">
+      <h2>Lưu ý:</h2>
+      <table style="border: 1px solid #000; width: 100%; text-align: left; border-collapse: collapse;">
+        <thead>
+          <tr style="background-color: #f2f2f2;">
+            <th style="padding: 8px; text-align: left;">Thành phần</th>
+            <th style="padding: 8px; text-align: left;">Ý nghĩa</th>
+            <th style="padding: 8px; text-align: left;">Ví dụ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 8px;">Biến</td>
+            <td style="padding: 8px;">Các biến nên là chữ thường, không dùng dấu tiếng Việt hay ký tự đặc biệt</td>
+            <td style="padding: 8px;">Ví dụ: <code>x</code>, <code>y</code></td>
+          </tr>
+          <tr>
+            <td style="padding: 8px;">log(x) </td>
+            <td style="padding: 8px;">nghĩa là log tự nhiên của x (ln(x))</td>
+            <td style="padding: 8px;">Ví dụ: <code>log(x) là ln(x)</code></td>
+          </tr>
+          <tr>
+            <td style="padding: 8px;">log(x, a) </td>
+            <td style="padding: 8px;">log của biến x theo cơ số a</td>
+            <td style="padding: 8px;">Ví dụ: <code>log(x,2)</code></td>
+          </tr>
+          <tr>
+            <td style="padding: 8px;">a**b</td>
+            <td style="padding: 8px;">a lũy thừa b</td>
+            <td style="padding: 8px;">Ví dụ: <code>x**2</code> (không dùng <code>^</code>)</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px;"> sin, cos</td>
+            <td style="padding: 8px;">hàm sin, cos</td>
+            <td style="padding: 8px;">Ví dụ: <code>sin(x)</code>, <code>cos(x)</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div> 
+    {% endif %}
+
+
+    <label for="expr_input"><strong>Nhập biểu thức:</strong></label>
+    <input type="text" id="expr_input" name="expr_input" value="{{ expr_input }}" required>
+    <button type="submit" name="action" value="parse">Xem biến</button>
+    <br>
+
+    <!-- Hiển thị công thức dạng đẹp -->
+    {% if expr_latex %}
+    <h2>Công thức đã nhập:</h2>
+    <div class="formula">
+      <p>$$ {{ expr_latex }} $$</p>
+    </div>
+    {% endif %}
+    
+    <!--Nhập giá trị cho các biến-->
+    <!-- Nếu đã có biến được phát hiện, hiển thị các ô nhập giá trị -->
+    {% if show_variables %}
+      <form method="POST">
+        <!-- Giữ lại expr_input để compute -->
+        <input type="hidden" name="expr_input" value="{{ expr_input }}">
+        <h3>Nhập giá trị cho các biến:</h3>
+        {% for var in variables %}
+          <label for="{{ var }}">Giá trị {{ var }}:</label>
+          <input type="text" id="{{ var }}" name="{{ var }}" required><br>
+        {% endfor %}
+        <button type="submit" name="action" value="compute">Tính toán</button>
+      </form>
+    {% endif %}
+
+  {% if show_result %}
+   <!--Hiện các giá trị vừa nhập--> 
+   {% if variables %}
+   <div class="result">
+     <h2>Giá trị đã nhập:</h2>
+     <ul>
+       {% for var in variables %}
+       <p>{{ var }} = {{ request.form.get(var) }}</p>
+       {% endfor %}
+     </ul>
+   {% endif %}
+    <div class="result">
+      <h2 style="font-size: 20px;">Kết quả truyền xuôi:</h2>
+      <p style="font-size: 20px;">{{ forward_result }}</p>
+      
+      <h2>Đạo hàm của biểu thức:</h2>
+      <ul>
+        {% for var, grad in gradients.items() %}
+        <li>
+          <!-- Hiển thị công thức đạo hàm dạng LaTeX -->
+          
+          
+          <em>Công thức đạo hàm theo biến {{var}}:</em>
+          <p>
+          <div style="background-color: #cce5ff; border: 3px solid #004085; padding: 15px; border-radius: 8px; color: #004085; font-size: 18px; margin-top: 20px;">
+            $$ \frac{\delta}{\delta {{ var }}} \left( {{ expr_latex }} \right) = {{ gradient_expressions[var] }} $$  
+          </div>
+          </p>
+          
+          <br>
+          <strong style="font-size: 20px;">Giá trị:</strong> 
+          <span style="font-size: 20px;">{{ grad }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  
+  {% if plot_url %}
+  
+  <div class="result">
+    <h2>Đồ thị biểu thức:</h2>
+    <!-- plot_url là chuỗi Base64 -->
+    <img src="data:image/svg+xml;base64,{{ plot_url }}" alt="Đồ thị biểu thức">
+  </div>
+
+  <div style="margin-top: 20px; font-weight: bold;">GHI CHÚ:</div>
+
+  <table style="width:100%; border: 1px solid #ddd; margin-top: 10px; background-color: #f0f8ff;">
+    <tr>
+      <th style="padding: 8px; text-align: left;">Ký hiệu</th>
+      <th style="padding: 8px; text-align: left;">Chú thích</th>
+    </tr>
+    <tr>
+      <td style="padding: 8px;">x*y</td>
+      <td style="padding: 8px;">x nhân y</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px;">x**2</td>
+      <td style="padding: 8px;">x mũ 2</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px;">log(x,2)</td>
+      <td style="padding: 8px;">log cơ số 2 của x</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px;">log(x)</td>
+      <td style="padding: 8px;">log tự nhiên của x (ln(x))</td>
+    </tr>
+  </table>
+  {% endif %}
+  
+</body>
+</html>
