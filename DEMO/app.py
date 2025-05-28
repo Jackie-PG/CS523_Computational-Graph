@@ -33,7 +33,7 @@ def custom_label_for_graphviz(expr):
     """
     if expr.is_Number:
         # ép thành float rồi format .3f
-        return f"{float(expr):.2f}"
+        return f"{float(expr):.3f}"
     
     if expr.func == sp.log and len(expr.args) == 2:
         arg_str = str(expr.args[0])
@@ -53,7 +53,17 @@ class CustomLatexPrinter(LatexPrinter):
             return r'\log_{%s}\left(%s\right)' % (base, arg)
         else:
             arg = self._print(expr.args[0])
-            return r'\log\left(%s\right)' % (arg)
+            return r'\log\left(%s\right)' % (arg) 
+        
+    # bỏ “1” trong phép nhân
+    def _print_Mul(self, expr):
+        if len(expr.args) == 2:
+            num, den = expr.as_numer_denom()
+            if den != 1:
+                num_str = self._print(num)
+                den_str = self._print(den)
+                return r'\frac{%s}{%s}' % (num_str, den_str)
+        return super()._print_Mul(expr)
 
 def custom_latex(expr):
     return CustomLatexPrinter().doprint(expr)
@@ -93,12 +103,24 @@ def build_expr_tree(expr, node_info, graph=None, parent_id=None,
     """
     Duyệt cây biểu thức và vẽ bằng Graphviz. 
     mapping: dict để đảm bảo mỗi expr chỉ có một node_id.
-    """
+    """ 
+    if counter is None:
+        counter = [0]
+
     if graph is None:
         graph = Digraph(format='svg')
         graph.attr('node', shape='oval')
     if mapping is None:
         mapping = {}
+
+    # --- MODIFIED: Bỏ qua wrapper Mul(1, x) để không vẽ node thừa
+    if expr.func == sp.Mul:
+        non_ones = [a for a in expr.args if not (a.is_Number and float(a) == 1)]
+        if len(non_ones) == 1:
+            return build_expr_tree(non_ones[0], node_info,
+                                   graph, parent_id,
+                                   counter, mapping)
+
 
     # Nếu đã xử lý expr này rồi, chỉ cần vẽ cạnh đến parent và return
     if expr in mapping:
@@ -123,8 +145,17 @@ def build_expr_tree(expr, node_info, graph=None, parent_id=None,
     if parent_id is not None:
         graph.edge(node_id, parent_id)
 
+
     # Đệ quy với các arg
     for arg in expr.args:
+         # (a) Bỏ qua số 1 (1 * anything)
+        if arg.is_Number and float(arg) == 1:
+            continue
+
+        # (b) Nếu expr là Pow(x, e) thì bỏ qua phần exponent e
+        if expr.func == sp.Pow and arg == expr.args[1]:
+            continue
+
         build_expr_tree(arg, node_info, graph, node_id, counter, mapping)
 
     return graph
@@ -158,7 +189,8 @@ def index():
         try:
              # 1) Parse biểu thức, không evaluate để giữ nguyên cấu trúc
             expr = sp.parse_expr(expr_input, evaluate=False)
-        
+            
+
             expr_latex = custom_latex(expr)  # Chuyển biểu thức sang định dạng LaTeX
         except Exception as e:
             error = f"Lỗi khi phân tích biểu thức: {e}"
